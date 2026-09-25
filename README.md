@@ -76,6 +76,7 @@ Or if installed globally:
 | `log_time` | Log time entry for a work package |
 | `list_attachments` | List attachments of a work package |
 | `get_attachment` | Fetch an attachment; returns the image inline for image files, metadata + URL otherwise |
+| `upload_attachment` | Upload a file (local path or base64) to a work package |
 | `raw_api_call` | Make a raw API call to any endpoint |
 
 ## Usage Examples

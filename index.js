@@ -2,6 +2,8 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -54,6 +56,41 @@ async function fetchAttachment(id) {
       { type: "image", data: data, mimeType: info.contentType }
     ]
   };
+}
+
+async function uploadAttachment(args) {
+  let bytes;
+  let fileName = args.fileName;
+  if (args.filePath) {
+    bytes = await readFile(args.filePath);
+    fileName = fileName || basename(args.filePath);
+  } else if (args.contentBase64) {
+    bytes = Buffer.from(args.contentBase64, "base64");
+  } else {
+    throw new Error("Provide either filePath or contentBase64");
+  }
+  if (!fileName) {
+    throw new Error("fileName is required when using contentBase64");
+  }
+
+  const metadata = { fileName: fileName };
+  if (args.description) {
+    metadata.description = { raw: args.description };
+  }
+  const form = new FormData();
+  form.append("metadata", JSON.stringify(metadata));
+  form.append("file", new Blob([bytes], { type: args.contentType || "application/octet-stream" }), fileName);
+
+  const response = await fetch(BASE_URL + "/api/v3/work_packages/" + args.workPackageId + "/attachments", {
+    method: "POST",
+    headers: Object.assign({ "Accept": "application/json" }, authHeaders()),
+    body: form
+  });
+  if (!response.ok) {
+    throw new Error("API Error: " + response.status + " " + response.statusText + " " + (await response.text()));
+  }
+  const a = await response.json();
+  return { id: a.id, fileName: a.fileName, contentType: a.contentType, fileSize: a.fileSize };
 }
 
 async function apiRequest(endpoint, method, body) {
@@ -222,6 +259,22 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         type: "object",
         properties: {
           workPackageId: { type: "number", description: "Work package ID" }
+        },
+        required: ["workPackageId"]
+      }
+    },
+    {
+      name: "upload_attachment",
+      description: "Upload a file as an attachment to a work package. Provide either filePath (local file) or contentBase64 + fileName. Returns the new attachment's id, which can be used with get_attachment or referenced in a description as /api/v3/attachments/{id}/content.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workPackageId: { type: "number", description: "Work package ID" },
+          filePath: { type: "string", description: "Absolute path of a local file to upload" },
+          contentBase64: { type: "string", description: "Base64 file content (alternative to filePath)" },
+          fileName: { type: "string", description: "File name (required with contentBase64, defaults to the basename of filePath)" },
+          contentType: { type: "string", description: "MIME type, e.g. image/png (default application/octet-stream)" },
+          description: { type: "string", description: "Optional attachment description" }
         },
         required: ["workPackageId"]
       }
@@ -488,6 +541,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "get_attachment": {
         return await fetchAttachment(args.id);
+      }
+
+      case "upload_attachment": {
+        result = await uploadAttachment(args);
+        break;
       }
 
       case "list_attachments": {
