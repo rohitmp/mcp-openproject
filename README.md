@@ -7,13 +7,13 @@ Model Context Protocol (MCP) server for OpenProject API integration. Enables AI 
 ### Global Installation (Recommended)
 
 ```bash
-npm install -g openproject-mcp
+npm install -g @sparkbird/openproject-mcp
 ```
 
 ### Local Installation
 
 ```bash
-npm install openproject-mcp
+npm install @sparkbird/openproject-mcp
 ```
 
 ## Configuration
@@ -34,7 +34,7 @@ Add to `.kiro/settings/mcp.json`:
   "mcpServers": {
     "openproject": {
       "command": "npx",
-      "args": ["-y", "openproject-mcp"],
+      "args": ["-y", "@sparkbird/openproject-mcp"],
       "env": {
         "OPENPROJECT_URL": "https://your-openproject-instance.com",
         "OPENPROJECT_API_KEY": "your-api-key-here"
@@ -74,6 +74,8 @@ Or if installed globally:
 | `create_work_package` | Create a new work package |
 | `update_work_package` | Update an existing work package |
 | `log_time` | Log time entry for a work package |
+| `list_attachments` | List attachments of a work package |
+| `get_attachment` | Fetch an attachment; returns the image inline for image files, metadata + URL otherwise |
 | `raw_api_call` | Make a raw API call to any endpoint |
 
 ## Usage Examples
@@ -137,7 +139,7 @@ log_time({
 
 ## License
 
-MIT
+MIT. Fork of [cyborgx0x/mcp-openproject](https://github.com/cyborgx0x/mcp-openproject) (MIT, © original authors), extended with attachment/image support.
 
 ## Contributing
 

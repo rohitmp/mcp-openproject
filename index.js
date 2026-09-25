@@ -11,9 +11,50 @@ const BASE_URL = process.env.OPENPROJECT_URL || "https://your-openproject-instan
 const API_KEY = process.env.OPENPROJECT_API_KEY || "";
 
 const server = new Server(
-  { name: "openproject-mcp", version: "1.0.0" },
+  { name: "openproject-mcp", version: "1.1.0" },
   { capabilities: { tools: {} } }
 );
+
+function authHeaders() {
+  const headers = {};
+  if (API_KEY) {
+    headers["Authorization"] = "Basic " + Buffer.from("apikey:" + API_KEY).toString("base64");
+  }
+  return headers;
+}
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+async function fetchAttachment(id) {
+  const meta = await apiRequest("/api/v3/attachments/" + id);
+  const info = {
+    id: meta.id,
+    fileName: meta.fileName,
+    fileSize: meta.fileSize,
+    contentType: meta.contentType,
+    description: meta.description && meta.description.raw,
+    downloadUrl: BASE_URL + "/api/v3/attachments/" + id + "/content"
+  };
+
+  if (!info.contentType || !info.contentType.startsWith("image/")) {
+    return { content: [{ type: "text", text: JSON.stringify(info, null, 2) }] };
+  }
+  if (info.fileSize > MAX_IMAGE_BYTES) {
+    throw new Error("Image too large (" + info.fileSize + " bytes, max " + MAX_IMAGE_BYTES + ")");
+  }
+
+  const response = await fetch(info.downloadUrl, { headers: authHeaders(), redirect: "follow" });
+  if (!response.ok) {
+    throw new Error("API Error: " + response.status + " " + response.statusText);
+  }
+  const data = Buffer.from(await response.arrayBuffer()).toString("base64");
+  return {
+    content: [
+      { type: "text", text: JSON.stringify(info, null, 2) },
+      { type: "image", data: data, mimeType: info.contentType }
+    ]
+  };
+}
 
 async function apiRequest(endpoint, method, body) {
   method = method || "GET";
@@ -161,6 +202,28 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           activityId: { type: "number", description: "Activity type ID (1=Development)", default: 1 }
         },
         required: ["workPackageId", "hours"]
+      }
+    },
+    {
+      name: "get_attachment",
+      description: "Get a work package attachment by ID. Returns the image itself for image attachments, or metadata plus a download URL for other files. Attachment IDs are listed under _links.attachments of a work package (GET /api/v3/work_packages/{id}/attachments) or appear in inline image URLs (/api/v3/attachments/{id}/content).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          id: { type: "number", description: "Attachment ID" }
+        },
+        required: ["id"]
+      }
+    },
+    {
+      name: "list_attachments",
+      description: "List attachments of a work package (id, fileName, contentType, fileSize)",
+      inputSchema: {
+        type: "object",
+        properties: {
+          workPackageId: { type: "number", description: "Work package ID" }
+        },
+        required: ["workPackageId"]
       }
     },
     {
@@ -420,6 +483,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           workPackageId: args.workPackageId,
           comment: result.comment?.raw
         };
+        break;
+      }
+
+      case "get_attachment": {
+        return await fetchAttachment(args.id);
+      }
+
+      case "list_attachments": {
+        result = await apiRequest("/api/v3/work_packages/" + args.workPackageId + "/attachments");
+        if (result._embedded && result._embedded.elements) {
+          result = result._embedded.elements.map(function(a) {
+            return {
+              id: a.id,
+              fileName: a.fileName,
+              contentType: a.contentType,
+              fileSize: a.fileSize
+            };
+          });
+        }
         break;
       }
 
